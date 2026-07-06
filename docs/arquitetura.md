@@ -65,36 +65,21 @@ graph TD
 ### 1.3. Detalhamento da Camada de Persistência (Banco de Dados)
 *   **Tecnologia:** SQLite (baseado em arquivo físico `sirilo.db`).
 *   **Esquema de Dados (Schema):**
-    *   `condominios` (id, nome, cnpj)
-    *   `proprietarios` (id, nome, email, senha, status_adimplencia, peso_voto)
-    *   `lotes` (id, proprietario_id, tipo_unidade [Casa/Terreno], identificacao)
-    *   `procuradores` (id, nome, cpf, proprietario_id)
-    *   `reunioes` (id, titulo, data, status [Aguardando, Iniciada, Finalizada])
-    *   `pautas` (id, reuniao_id, descricao, status [Aberta, Fechada])
-    *   `votos` (id, pauta_id, proprietario_id, opcao_escolhida, peso_aplicado, ip_registro, user_agent, timestamp)
-    *   `logs_auditoria` (id, acao, detalhe, ip, timestamp)
+    O banco de dados relacional é modelado em perfeita conformidade com o Diagrama de Classes Persistentes da página 26 do documento `ERSW_SIRILO_4`:
+    *   `condominios` (id [PK], nome, cnpj)
+    *   `proprietarios` (id [PK], condominio_id [FK], nome, email, senha, lotes [text], peso_voto [decimal], inadimplente [boolean], tipo_acesso [enum: Admin, Proprietario])
+    *   `procuradores` (id [PK], proprietario_id [FK], reuniao_id [FK], nome, email, token_reuniao)
+    *   `reunioes` (id [PK], condominio_id [FK], nome_assembleia, data, hora, status [enum: Agendada, Em_Andamento, Encerrada])
+    *   `pautas` (id [PK], reuniao_id [FK], titulo, descricao, anexo_pdf [blob])
+    *   `votacoes` (id [PK], reuniao_id [FK], pergunta, tipo_resposta [enum: Sim_Nao, Multipla_Escolha, Eleicao], visibilidade [enum: Aberta, Fechada], status [enum: Aguardando, Aberta, Encerrada], duracao_minutos)
+    *   `votos` (id [PK], votacao_id [FK], proprietario_id [FK], procurador_id [FK, nullable], opcao_escolhida, peso_aplicado [decimal], timestamp, ip_voto)
+    *   `logs_auditoria` (id [PK], usuario_id [FK], acao, data_hora, ip, navegador)
 
 ---
 
 ## 2. FASES COMPLETAS DE IMPLEMENTAÇÃO
 
 O desenvolvimento do protótipo será dividido em **5 fases lógicas**, progredindo do ambiente e banco de dados até a simulação final da apresentação.
-
-```mermaid
-gantt
-    title Cronograma de Implementacao do Prototipo
-    dateFormat  YYYY-MM-DD
-    section Fase 1: Setup
-    Configuracao do Monorepo           :active, 2026-07-06, 1d
-    section Fase 2: Banco de Dados
-    Migrations e Seed Script          : 2026-07-07, 2d
-    section Fase 3: Backend API
-    Endpoints e Regras de Peso        : 2026-07-09, 3d
-    section Fase 4: Frontend UI
-    Telas React e Estilizacao         : 2026-07-12, 4d
-    section Fase 5: Integracao e Testes
-    Simulacao Local e Ajustes         : 2026-07-16, 2d
-```
 
 ### FASE 1: Configuração do Ambiente e Inicialização (Setup)
 *   **Objetivo:** Estruturar o projeto para execução simplificada e configurar o controle de dependências.
@@ -113,32 +98,35 @@ gantt
 ### FASE 2: Estrutura do Banco de Dados e Carga de Demonstração (Persistência)
 *   **Objetivo:** Modelar as tabelas relacionais e garantir uma massa de dados pronta para a apresentação.
 *   **Tarefas:**
-    1.  Escrever os scripts de migração (`migrations`) do Knex para criação de todas as tabelas (Proprietários, Lotes, Reuniões, Pautas, Votos e Logs de Auditoria) respeitando as chaves estrangeiras.
+    1.  Escrever os scripts de migração (`migrations`) do Knex para criação das 8 tabelas do banco de dados relacional em conformidade com o esquema acima.
     2.  Criar um script de **Seed** (`knex seed:run` ou script SQL) contendo:
-        *   **1 Administrador** do condomínio.
-        *   **Proprietário A:** Dono de 2 Casas (Adimplente, peso total = 4.0).
-        *   **Proprietário B:** Dono de 1 Terreno (Adimplente, peso total = 1.0).
-        *   **Proprietário C:** Dono de 1 Casa (Inadimplente, peso total = 0.0 para simular a regra de inadimplência).
-        *   **Proprietário D:** Representado por um **Procurador** cadastrado.
-        *   **1 Reunião cadastrada** com **2 Pautas** prontas para votação.
+        *   **1 Condomínio** cadastrado.
+        *   **1 Administrador** cadastrado em `proprietarios` com `tipo_acesso = 'Admin'`.
+        *   **Proprietário A:** Cadastrado com `lotes = 'Casa 10, Casa 11'`, `peso_voto = 4.0`, `inadimplente = false`.
+        *   **Proprietário B:** Cadastrado com `lotes = 'Terreno 15'`, `peso_voto = 1.0`, `inadimplente = false`.
+        *   **Proprietário C:** Cadastrado com `lotes = 'Casa 05'`, `peso_voto = 2.0`, `inadimplente = true` (para simular voto com peso zero).
+        *   **Proprietário D:** Cadastrado com `lotes = 'Terreno 22'`, `peso_voto = 1.0`, `inadimplente = false` e com um **Procurador** associado para a Reunião.
+        *   **1 Reunião cadastrada** no status `Em_Andamento` com **2 Pautas** e **1 Votação** pronta para ser aberta.
     3.  Criar uma rota backend oculta `/api/admin/reset-db` que apaga o arquivo `sirilo.db`, recria as tabelas e roda o script de seed instantaneamente.
 
 ### FASE 3: Desenvolvimento da Lógica de Negócio (Backend API)
 *   **Objetivo:** Construir as APIs REST seguras e implementar as fórmulas de peso e auditoria.
 *   **Tarefas:**
-    1.  **API de Login (`/api/auth/login`):** Valida credenciais e retorna o perfil do usuário (Admin ou Proprietário) mais informações básicas de sessão.
-    2.  **API de Pautas (`/api/pautas`):** Endpoints para criar pautas e alterar seu status (Abrir/Fechar Votação).
-    3.  **API de Voto (`/api/votacao/votar`):**
-        *   Recebe `proprietario_id`, `pauta_id` e a `opcao`.
-        *   Valida se a pauta está ativa/aberta.
-        *   Valida se o proprietário (ou procurador) já votou nesta pauta.
-        *   Busca a adimplência do proprietário. Se inadimplente, atribui peso 0.0. Caso contrário, busca os lotes associados e calcula a soma dos pesos correspondentes (Casa = 2.0, Terreno = 1.0).
-        *   Captura o IP (`req.ip` ou headers de proxy) e o `User-Agent` da requisição para registrar na tabela de votos e logs de auditoria.
-        *   Salva o voto.
-    4.  **API de Resultados (`/api/votacao/resultados`):**
-        *   Calcula a soma dos pesos de cada opção de voto para a pauta ativa.
+    1.  **API de Login (`/api/auth/login`):** Valida credenciais e retorna o perfil do usuário (Admin ou Proprietário) mais informações básicas de sessão, registrando o acesso no log de auditoria.
+    2.  **API de Reuniões e Pautas (`/api/reunioes`):** Endpoints para visualizar pautas, baixar anexos (RF30) e gerenciar o status da reunião (RF9).
+    3.  **API de Votação (`/api/votacoes`):** Endpoints para criar sessões de votação (RF14) e alterar seu status (Abrir/Fechar Votação - RF15).
+    4.  **API de Voto (`/api/votacoes/votar`):**
+        *   Recebe `proprietario_id`, `votacao_id` e a `opcao_escolhida`.
+        *   Valida se a votação correspondente está ativa/aberta.
+        *   Valida se o proprietário (ou procurador) já votou nesta votação (RF18).
+        *   Busca o status do proprietário. Se `inadimplente = true`, o `peso_aplicado` será **0.0** (RF19). Caso contrário, usa o `peso_voto` do proprietário.
+        *   Associa `procurador_id` caso a votação esteja sendo feita por um procurador cadastrado para aquela reunião (RF12).
+        *   Captura o IP (`req.ip`) e o `User-Agent` da requisição para registrar na tabela de votos (`ip_voto`) e logs de auditoria (RF4).
+        *   Salva o voto de forma definitiva e irreversível (RF18).
+    5.  **API de Resultados (`/api/votacoes/resultados`):**
+        *   Calcula a soma dos pesos de cada opção de voto para a votação ativa.
         *   Gera porcentagens relativas baseadas na soma dos pesos válidos registrados.
-    5.  **API de Auditoria (`/api/auditoria`):** Retorna os registros de logs de auditoria para visualização do administrador.
+    6.  **API de Auditoria (`/api/auditoria`):** Retorna os registros de logs de auditoria para visualização do administrador.
 
 ### FASE 4: Criação das Telas e Estilização Premium (Frontend)
 *   **Objetivo:** Desenvolver uma interface intuitiva, bonita, moderna e responsiva.
