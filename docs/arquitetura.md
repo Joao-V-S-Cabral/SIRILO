@@ -52,10 +52,11 @@ graph TD
 ### 1.2. Detalhamento da Camada de Lógica de Negócio (Backend)
 *   **Tecnologia:** Node.js com Express.js.
 *   **Segurança e Comunicação:**
-    *   **Configuração de CORS:** Middleware CORS totalmente liberado para a rede local, permitindo que dispositivos externos (celulares dos avaliadores) façam requisições ao backend rodando no notebook principal.
-    *   **Controle de Sessão e Auditoria (RF4):** Identificação e registro nos logs de auditoria do IP e do `User-Agent` do navegador que realizou cada voto e login.
+    *   **Binding e Roteamento de Rede Seguro:** O frontend (Vite) é configurado para expor as portas para a rede local (`host: true`), enquanto o backend Express escuta apenas localmente em `localhost` (127.0.0.1). Todas as chamadas de API são encaminhadas internamente pelo Proxy Reverso do Vite. Isso blinda o backend de acessos diretos externos e simplifica configurações de firewall locais.
+    *   **Controle de Sessão e Auditoria (RF4):** Identificação e registro nos logs de auditoria do IP e do `User-Agent` do navegador que realizou cada voto e login (incluindo proprietários e procuradores).
 *   **Regras de Negócio Implementadas:**
-    *   **Unicidade do Voto (RF16, RF18):** Validação de que um proprietário ou seu procurador só pode votar uma vez por pauta.
+    *   **Unicidade do Voto (RF16, RF18):** Validação de que um proprietário ou seu procurador só pode votar uma vez por pauta. Enforçado por restrição de banco no nível da tabela de votos.
+    *   **Fluxo de Procurador Multi-Representante:** Cada procurador cadastrado possui um `token_reuniao` único. Caso um procurador represente mais de um proprietário, ele terá registros distintos e tokens separados para cada representação, realizando logins individuais e independentes para votar em nome de cada proprietário.
     *   **Verificação de Adimplência (RF19):** Cruzamento do status de pagamento do proprietário. Proprietários adimplentes têm seus pesos normais somados. Proprietários inadimplentes podem ter o voto registrado com **peso zero** (ou bloqueado, dependendo da regra exata exigida).
     *   **Cálculo Ponderado (RF19):**
         *   Fração ideal de lote: Terreno = Peso 1.0.
@@ -68,12 +69,12 @@ graph TD
     O banco de dados relacional é modelado em perfeita conformidade com o Diagrama de Classes Persistentes da página 26 do documento `ERSW_SIRILO_4`:
     *   `condominios` (id [PK], nome, cnpj)
     *   `proprietarios` (id [PK], condominio_id [FK], nome, email, senha, lotes [text], peso_voto [decimal], inadimplente [boolean], tipo_acesso [enum: Admin, Proprietario])
-    *   `procuradores` (id [PK], proprietario_id [FK], reuniao_id [FK], nome, email, token_reuniao)
+    *   `procuradores` (id [PK], proprietario_id [FK], reuniao_id [FK], nome, email, token_reuniao [UNIQUE])
     *   `reunioes` (id [PK], condominio_id [FK], nome_assembleia, data, hora, status [enum: Agendada, Em_Andamento, Encerrada])
     *   `pautas` (id [PK], reuniao_id [FK], titulo, descricao, anexo_pdf [blob])
-    *   `votacoes` (id [PK], reuniao_id [FK], pergunta, tipo_resposta [enum: Sim_Nao, Multipla_Escolha, Eleicao], visibilidade [enum: Aberta, Fechada], status [enum: Aguardando, Aberta, Encerrada], duracao_minutos)
-    *   `votos` (id [PK], votacao_id [FK], proprietario_id [FK], procurador_id [FK, nullable], opcao_escolhida, peso_aplicado [decimal], timestamp, ip_voto)
-    *   `logs_auditoria` (id [PK], usuario_id [FK], acao, data_hora, ip, navegador)
+    *   `votacoes` (id [PK], reuniao_id [FK], pauta_id [FK], pergunta, tipo_resposta [enum: Sim_Nao, Multipla_Escolha, Eleicao], visibilidade [enum: Aberta, Fechada], status [enum: Aguardando, Aberta, Encerrada], duracao_minutos)
+    *   `votos` (id [PK], votacao_id [FK], proprietario_id [FK], procurador_id [FK, nullable], opcao_escolhida, peso_aplicado [decimal], timestamp, ip_voto) -> Com restrição UNIQUE em (votacao_id, proprietario_id) para garantir a unicidade do voto (RF18).
+    *   `logs_auditoria` (id [PK], proprietario_id [FK, nullable], procurador_id [FK, nullable], acao, data_hora, ip, navegador)
 
 ---
 
@@ -88,7 +89,7 @@ O desenvolvimento do protótipo será dividido em **5 fases lógicas**, progredi
     2.  Configurar o `package.json` na raiz do projeto para utilizar o pacote `concurrently`. Adicionar o script:
         ```json
         "scripts": {
-          "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+          "install-all": "npm install && npm install --prefix backend && npm install --prefix frontend",
           "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\""
         }
         ```
@@ -99,40 +100,40 @@ O desenvolvimento do protótipo será dividido em **5 fases lógicas**, progredi
 *   **Objetivo:** Modelar as tabelas relacionais e garantir uma massa de dados pronta para a apresentação.
 *   **Tarefas:**
     1.  Escrever os scripts de migração (`migrations`) do Knex para criação das 8 tabelas do banco de dados relacional em conformidade com o esquema acima.
-    2.  Criar um script de **Seed** (`knex seed:run` ou script SQL) contendo:
+    2.  Criar um script de **Seed** (`knex seed:run` ou script SQL) contendo credenciais e massas padronizadas para facilitar o desenvolvimento:
         *   **1 Condomínio** cadastrado.
-        *   **1 Administrador** cadastrado em `proprietarios` com `tipo_acesso = 'Admin'`.
-        *   **Proprietário A:** Cadastrado com `lotes = 'Casa 10, Casa 11'`, `peso_voto = 4.0`, `inadimplente = false`.
-        *   **Proprietário B:** Cadastrado com `lotes = 'Terreno 15'`, `peso_voto = 1.0`, `inadimplente = false`.
-        *   **Proprietário C:** Cadastrado com `lotes = 'Casa 05'`, `peso_voto = 2.0`, `inadimplente = true` (para simular voto com peso zero).
-        *   **Proprietário D:** Cadastrado com `lotes = 'Terreno 22'`, `peso_voto = 1.0`, `inadimplente = false` e com um **Procurador** associado para a Reunião.
+        *   **1 Administrador** cadastrado em `proprietarios` com `email = 'admin@sirilo.com'`, `senha = 'admin123'`, `tipo_acesso = 'Admin'`.
+        *   **Proprietário A:** Cadastrado com `email = 'proprietario_a@sirilo.com'`, `senha = 'senha123'`, `lotes = 'Casa 10, Casa 11'`, `peso_voto = 4.0`, `inadimplente = false`.
+        *   **Proprietário B:** Cadastrado com `email = 'proprietario_b@sirilo.com'`, `senha = 'senha123'`, `lotes = 'Terreno 15'`, `peso_voto = 1.0`, `inadimplente = false`.
+        *   **Proprietário C:** Cadastrado com `email = 'proprietario_c@sirilo.com'`, `senha = 'senha123'`, `lotes = 'Casa 05'`, `peso_voto = 2.0`, `inadimplente = true` (para simular voto com peso zero).
+        *   **Proprietário D:** Cadastrado com `email = 'proprietario_d@sirilo.com'`, `senha = 'senha123'`, `lotes = 'Terreno 22'`, `peso_voto = 1.0`, `inadimplente = false` e com um **Procurador** cadastrado com `email = 'procurador_d@sirilo.com'` e `token_reuniao = 'PROCURADOR_DEMO'`.
         *   **1 Reunião cadastrada** no status `Em_Andamento` com **2 Pautas** e **1 Votação** pronta para ser aberta.
-    3.  Criar uma rota backend oculta `/api/admin/reset-db` que apaga o arquivo `sirilo.db`, recria as tabelas e roda o script de seed instantaneamente.
+    3.  Criar uma rota backend protegida `/api/admin/reset-db` (exigindo uma chave de validação como `/api/admin/reset-db?secret=CHAVE_SECRETA` ou validação de sessão de Admin) que apaga o arquivo `backend/sirilo.db`, recria as tabelas e roda o script de seed instantaneamente para garantir a segurança da demonstração.
 
 ### FASE 3: Desenvolvimento da Lógica de Negócio (Backend API)
 *   **Objetivo:** Construir as APIs REST seguras e implementar as fórmulas de peso e auditoria.
 *   **Tarefas:**
-    1.  **API de Login (`/api/auth/login`):** Valida credenciais e retorna o perfil do usuário (Admin ou Proprietário) mais informações básicas de sessão, registrando o acesso no log de auditoria.
+    1.  **API de Login (`/api/auth/login`):** Valida credenciais (senha/email para Admins/Proprietários ou token/email para Procuradores) e retorna o perfil correspondente (Admin, Proprietário ou Procurador) com as informações de sessão, registrando o acesso no log de auditoria.
     2.  **API de Reuniões e Pautas (`/api/reunioes`):** Endpoints para visualizar pautas, baixar anexos (RF30) e gerenciar o status da reunião (RF9).
-    3.  **API de Votação (`/api/votacoes`):** Endpoints para criar sessões de votação (RF14) e alterar seu status (Abrir/Fechar Votação - RF15).
+    3.  **API de Votação (`/api/votacoes`):** Endpoints para criar sessões de votação (RF14) associadas a uma `pauta_id` e alterar seu status (Abrir/Fechar Votação - RF15).
     4.  **API de Voto (`/api/votacoes/votar`):**
-        *   Recebe `proprietario_id`, `votacao_id` e a `opcao_escolhida`.
+        *   Recebe `proprietario_id` (ou id representado), `votacao_id`, `opcao_escolhida` e opcionalmente `procurador_id`.
         *   Valida se a votação correspondente está ativa/aberta.
-        *   Valida se o proprietário (ou procurador) já votou nesta votação (RF18).
+        *   Valida se o proprietário (ou procurador representante) já votou nesta votação (RF18).
         *   Busca o status do proprietário. Se `inadimplente = true`, o `peso_aplicado` será **0.0** (RF19). Caso contrário, usa o `peso_voto` do proprietário.
-        *   Associa `procurador_id` caso a votação esteja sendo feita por um procurador cadastrado para aquela reunião (RF12).
+        *   Associa o `procurador_id` caso o login ativo da requisição seja de um procurador credenciado (RF12).
         *   Captura o IP (`req.ip`) e o `User-Agent` da requisição para registrar na tabela de votos (`ip_voto`) e logs de auditoria (RF4).
         *   Salva o voto de forma definitiva e irreversível (RF18).
     5.  **API de Resultados (`/api/votacoes/resultados`):**
         *   Calcula a soma dos pesos de cada opção de voto para a votação ativa.
-        *   Gera porcentagens relativas baseadas na soma dos pesos válidos registrados.
+        *   Gera porcentagens relativas baseadas na soma dos pesos válidos registrados. Trata divisões por zero com segurança (retornando `0%` para todas as opções se a soma de pesos for `0.0`).
     6.  **API de Auditoria (`/api/auditoria`):** Retorna os registros de logs de auditoria para visualização do administrador.
 
 ### FASE 4: Criação das Telas e Estilização Premium (Frontend)
 *   **Objetivo:** Desenvolver uma interface intuitiva, bonita, moderna e responsiva.
 *   **Tarefas:**
     1.  **Criação do Design System:** Definir fontes modernas (como *Inter*), variáveis CSS para cores primárias/secundárias, gradientes suaves para fundos e efeitos de *glassmorphism* (cartões translúcidos).
-    2.  **Tela de Login:** Formulário centralizado elegante com seleção rápida para "Entrar como Admin" ou "Entrar como Proprietário" (para acelerar os testes).
+    2.  **Tela de Login:** Formulário centralizado elegante com atalhos de preenchimento rápido para cada perfil de teste ("Entrar como Admin", "Entrar como Proprietário Adimplente A", "Entrar como Proprietário Inadimplente C" ou "Entrar como Procurador D") para agilizar a demonstração diante da banca avaliadora.
     3.  **Dashboard do Administrador:**
         *   Listagem de reuniões e pautas.
         *   Controles claros: botão "Iniciar Reunião" e botões "Abrir Votação" / "Encerrar Votação" em cada pauta.
@@ -151,8 +152,8 @@ O desenvolvimento do protótipo será dividido em **5 fases lógicas**, progredi
 *   **Objetivo:** Garantir estabilidade total do sistema na hora da apresentação real do projeto.
 *   **Tarefas:**
     1.  Testar exaustivamente as regras de validação (ex: garantir que o usuário inadimplente tenha peso 0 no resultado final).
-    2.  Configurar a escuta do backend Express para todas as interfaces de rede (`app.listen(3000, '0.0.0.0')`) para habilitar o acesso externo na rede local.
-    3.  Conectar um celular na mesma Wi-Fi do computador de desenvolvimento, acessar o frontend usando o IP da máquina e realizar o fluxo de login e voto completo.
+    2.  Configurar o Express para escutar em `localhost` (`127.0.0.1:3001`) e garantir que a exposição externa seja gerida pelo servidor Vite (`host: true` na porta `5173`) servindo as chamadas de API via Proxy Reverso interno.
+    3.  Conectar um celular na mesma Wi-Fi do computador de desenvolvimento, acessar o frontend do Vite usando o IP da máquina (`http://<IP_DA_MAQUINA>:5173`) e realizar o fluxo de login (proprietário ou procurador) e voto completo.
     4.  Documentar no arquivo de roteiro de testes o passo a passo exato a ser seguido no dia da apresentação para que a banca veja todas as features funcionando sem interrupções.
 
 ---
