@@ -102,6 +102,7 @@ export function ReuniaoDetailPage() {
 
 function PautaCard({ pauta, reuniao, isAdmin, onErro, onAviso, onAtualizar }) {
   const [mostrarNovaVotacao, setMostrarNovaVotacao] = useState(false);
+  const reuniaoEncerrada = reuniao.status === 'Encerrada';
 
   async function handleBaixarAnexo() {
     try {
@@ -131,7 +132,7 @@ function PautaCard({ pauta, reuniao, isAdmin, onErro, onAviso, onAtualizar }) {
           <button type="button" className="btn btn-ghost" onClick={handleBaixarAnexo}>
             Baixar anexo
           </button>
-          {isAdmin && (
+          {isAdmin && !reuniaoEncerrada && (
             <label className="btn btn-ghost file-btn">
               Enviar anexo
               <input
@@ -167,12 +168,12 @@ function PautaCard({ pauta, reuniao, isAdmin, onErro, onAviso, onAtualizar }) {
               <Link to={`/votacoes/${votacao.id}/resultados`} className="btn btn-ghost">
                 Resultados
               </Link>
-              {isAdmin && votacao.status === 'Aguardando' && (
+              {isAdmin && !reuniaoEncerrada && votacao.status === 'Aguardando' && (
                 <button type="button" className="btn btn-secondary" onClick={() => handleAtualizarStatusVotacao(votacao, 'Aberta')}>
                   Abrir votação
                 </button>
               )}
-              {isAdmin && votacao.status === 'Aberta' && (
+              {isAdmin && !reuniaoEncerrada && votacao.status === 'Aberta' && (
                 <button type="button" className="btn btn-secondary" onClick={() => handleAtualizarStatusVotacao(votacao, 'Encerrada')}>
                   Encerrar votação
                 </button>
@@ -183,7 +184,7 @@ function PautaCard({ pauta, reuniao, isAdmin, onErro, onAviso, onAtualizar }) {
         {(!pauta.votacoes || pauta.votacoes.length === 0) && <p className="hint-text">Nenhuma votação criada para esta pauta.</p>}
       </div>
 
-      {isAdmin && reuniao.status !== 'Encerrada' && (
+      {isAdmin && !reuniaoEncerrada && (
         <div className="pauta-nova-votacao">
           {mostrarNovaVotacao ? (
             <NovaVotacaoForm
