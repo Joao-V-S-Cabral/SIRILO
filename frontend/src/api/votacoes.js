@@ -23,3 +23,7 @@ export function resultadosVotacao(id) {
 export function votar(votacao_id, opcao_escolhida) {
   return client.post('/votacoes/votar', { votacao_id, opcao_escolhida }).then((res) => res.data);
 }
+
+export function meuVoto(votacaoId) {
+  return client.get(`/votacoes/${votacaoId}/meu-voto`).then((res) => res.data.voto);
+}

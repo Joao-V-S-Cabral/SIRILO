@@ -1,20 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
-import { votacaoAtiva, votar } from '../api/votacoes';
+import { meuVoto as buscarMeuVoto, votacaoAtiva, votar } from '../api/votacoes';
 import { extractErrorMessage } from '../api/client';
-import { parseOpcoes } from '../utils/votacoes';
+import { parseOpcoes, segundosRestantes as calcularSegundosRestantes } from '../utils/votacoes';
 
 const INTERVALO_POLLING_MS = 3000;
 
 export function VotarSection({ reuniaoId, onVotoRegistrado }) {
   const [votacao, setVotacao] = useState(null);
+  const [meuVoto, setMeuVoto] = useState(null);
+  const [carregandoMeuVoto, setCarregandoMeuVoto] = useState(true);
   const [opcaoSelecionada, setOpcaoSelecionada] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState(null);
   const [mensagemSucesso, setMensagemSucesso] = useState(null);
-  const [votadoAgora, setVotadoAgora] = useState(false);
-  const [segundosRestantes, setSegundosRestantes] = useState(null);
+  const [tempoRestante, setTempoRestante] = useState(null);
   const votacaoAnteriorId = useRef(null);
 
+  // Poll da votação ativa da reunião. Ao detectar uma votação nova (ou o
+  // primeiro carregamento da página), busca se esta sessão já votou nela -
+  // isso é o que faz o estado sobreviver a um recarregamento de página,
+  // em vez de depender só de estado local do componente.
   useEffect(() => {
     let ativo = true;
 
@@ -23,15 +28,29 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
         const dados = await votacaoAtiva(reuniaoId);
         if (!ativo) return;
         setVotacao(dados);
-        if (dados && dados.id !== votacaoAnteriorId.current) {
-          votacaoAnteriorId.current = dados.id;
-          setVotadoAgora(false);
-          setMensagemSucesso(null);
+
+        const idAtual = dados?.id ?? null;
+        if (idAtual !== votacaoAnteriorId.current) {
+          votacaoAnteriorId.current = idAtual;
           setOpcaoSelecionada('');
-          setSegundosRestantes((dados.duracao_minutos || 0) * 60);
-        }
-        if (!dados) {
-          votacaoAnteriorId.current = null;
+          setErro(null);
+          setMensagemSucesso(null);
+
+          if (!dados) {
+            setMeuVoto(null);
+            setCarregandoMeuVoto(false);
+            return;
+          }
+
+          setCarregandoMeuVoto(true);
+          try {
+            const voto = await buscarMeuVoto(dados.id);
+            if (ativo) setMeuVoto(voto);
+          } catch {
+            if (ativo) setMeuVoto(null);
+          } finally {
+            if (ativo) setCarregandoMeuVoto(false);
+          }
         }
       } catch {
         // Falha de polling é silenciosa; próxima tentativa em breve.
@@ -46,13 +65,20 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
     };
   }, [reuniaoId]);
 
+  // Cronômetro: sempre recalculado a partir de votacao.aberta_em (gravado
+  // pelo servidor), nunca de uma contagem local - assim ele mostra o tempo
+  // real restante mesmo depois de recarregar a página ou trocar de aparelho.
   useEffect(() => {
-    if (segundosRestantes === null || segundosRestantes <= 0) return;
+    if (!votacao) {
+      setTempoRestante(null);
+      return;
+    }
+    setTempoRestante(calcularSegundosRestantes(votacao));
     const timer = setInterval(() => {
-      setSegundosRestantes((s) => (s === null ? null : Math.max(0, s - 1)));
+      setTempoRestante(calcularSegundosRestantes(votacao));
     }, 1000);
     return () => clearInterval(timer);
-  }, [segundosRestantes]);
+  }, [votacao]);
 
   async function handleVotar(e) {
     e.preventDefault();
@@ -62,12 +88,19 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
     try {
       const resultado = await votar(votacao.id, opcaoSelecionada);
       setMensagemSucesso(resultado.message);
-      setVotadoAgora(true);
+      setMeuVoto({ opcao_escolhida: opcaoSelecionada, peso_aplicado: resultado.peso_aplicado });
       onVotoRegistrado?.();
     } catch (err) {
       const msg = extractErrorMessage(err, 'Não foi possível registrar o voto.');
       setErro(msg);
-      if (err?.response?.status === 409) setVotadoAgora(true);
+      if (err?.response?.status === 409) {
+        try {
+          const voto = await buscarMeuVoto(votacao.id);
+          setMeuVoto(voto);
+        } catch {
+          // Se nem isso funcionar, o erro acima já foi exibido ao usuário.
+        }
+      }
     } finally {
       setEnviando(false);
     }
@@ -82,23 +115,27 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
   }
 
   const opcoes = parseOpcoes(votacao.opcoes);
-  const minutos = segundosRestantes !== null ? Math.floor(segundosRestantes / 60) : null;
-  const segundos = segundosRestantes !== null ? segundosRestantes % 60 : null;
+  const minutos = tempoRestante !== null ? Math.floor(tempoRestante / 60) : null;
+  const segundos = tempoRestante !== null ? tempoRestante % 60 : null;
 
   return (
     <div className="card votar-card">
       <div className="votar-header">
         <h2>Votação em andamento</h2>
-        {segundosRestantes !== null && (
-          <span className="timer" title="Cronômetro estimado, iniciado a partir da abertura desta votação nesta sessão">
+        {tempoRestante !== null && (
+          <span className="timer" title="Tempo restante para o encerramento automático desta votação">
             {String(minutos).padStart(2, '0')}:{String(segundos).padStart(2, '0')}
           </span>
         )}
       </div>
       <p className="votar-pergunta">{votacao.pergunta}</p>
 
-      {votadoAgora ? (
-        <p className="success-text">{mensagemSucesso || 'Voto já registrado nesta votação.'}</p>
+      {carregandoMeuVoto ? (
+        <p className="hint-text">Verificando seu voto...</p>
+      ) : meuVoto ? (
+        <p className="success-text">
+          {mensagemSucesso || `Você votou em "${meuVoto.opcao_escolhida}" (peso aplicado: ${meuVoto.peso_aplicado}).`}
+        </p>
       ) : (
         <form onSubmit={handleVotar}>
           <div className="opcoes-list">
