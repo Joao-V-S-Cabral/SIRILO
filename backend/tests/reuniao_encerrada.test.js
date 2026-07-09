@@ -68,6 +68,20 @@ describe('Regras de negócio: reunião encerrada', () => {
     expect(res.status).toBe(400);
   });
 
+  test('rejeita remoção de anexo em pauta de reunião encerrada', async () => {
+    // Insere o anexo direto no banco (contornando o upload, já bloqueado acima)
+    // só para poder testar isoladamente a regra de bloqueio da remoção.
+    await connection('pautas')
+      .where({ id: pautaId })
+      .update({ anexo_pdf: Buffer.from('%PDF-1.4\nConteudo\n%%EOF') });
+
+    const res = await request(app)
+      .delete(`/api/pautas/${pautaId}/anexo`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
+  });
+
   test('rejeita criação de nova votação em pauta de reunião encerrada', async () => {
     const res = await request(app)
       .post('/api/votacoes')

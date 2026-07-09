@@ -8,9 +8,9 @@ class ReunioesController {
   async listar(req, res) {
     try {
       const reunioes = await connection('reunioes').select('*').orderBy('data', 'desc');
-      const pautas = await connection('pautas').select(
-        'id', 'reuniao_id', 'titulo', 'descricao'
-      );
+      const pautas = await connection('pautas')
+        .select('id', 'reuniao_id', 'titulo', 'descricao')
+        .select(connection.raw('(anexo_pdf IS NOT NULL) as tem_anexo'));
 
       const resultado = reunioes.map(reuniao => ({
         ...reuniao,
@@ -35,7 +35,8 @@ class ReunioesController {
 
       const pautas = await connection('pautas')
         .where({ reuniao_id: id })
-        .select('id', 'reuniao_id', 'titulo', 'descricao');
+        .select('id', 'reuniao_id', 'titulo', 'descricao')
+        .select(connection.raw('(anexo_pdf IS NOT NULL) as tem_anexo'));
 
       const votacoes = await connection('votacoes').where({ reuniao_id: id });
 
@@ -128,6 +129,7 @@ class ReunioesController {
       const pautaCriada = await connection('pautas')
         .where({ id: pautaId })
         .select('id', 'reuniao_id', 'titulo', 'descricao')
+        .select(connection.raw('(anexo_pdf IS NOT NULL) as tem_anexo'))
         .first();
 
       return res.status(201).json(pautaCriada);
@@ -198,6 +200,37 @@ class ReunioesController {
       return res.json({ status: 'success', message: 'Anexo enviado com sucesso.' });
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao enviar anexo da pauta.', details: error.message });
+    }
+  }
+
+  /** DELETE /api/pautas/:id/anexo (Admin) — remove o PDF anexado à pauta. */
+  async removerAnexo(req, res) {
+    const { id } = req.params;
+
+    try {
+      const pauta = await connection('pautas').where({ id }).first();
+      if (!pauta) {
+        return res.status(404).json({ error: 'Pauta não encontrada.' });
+      }
+
+      if (!pauta.anexo_pdf) {
+        return res.status(404).json({ error: 'Esta pauta não possui anexo.' });
+      }
+
+      const reuniao = await connection('reunioes').where({ id: pauta.reuniao_id }).first();
+      if (reuniao && reuniao.status === 'Encerrada') {
+        return res.status(400).json({ error: 'Não é possível remover anexos de uma reunião encerrada.' });
+      }
+
+      await connection('pautas').where({ id }).update({ anexo_pdf: null });
+
+      await auditoriaService.registrar(req, {
+        acao: `Anexo PDF removido da pauta ${id} ("${pauta.titulo}")`
+      });
+
+      return res.json({ status: 'success', message: 'Anexo removido com sucesso.' });
+    } catch (error) {
+      return res.status(500).json({ error: 'Erro ao remover anexo da pauta.', details: error.message });
     }
   }
 }
