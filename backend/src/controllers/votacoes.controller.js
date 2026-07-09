@@ -66,6 +66,11 @@ class VotacoesController {
         return res.status(404).json({ error: 'Pauta não encontrada.' });
       }
 
+      const reuniaoDaPauta = await connection('reunioes').where({ id: pauta.reuniao_id }).first();
+      if (reuniaoDaPauta && reuniaoDaPauta.status === 'Encerrada') {
+        return res.status(400).json({ error: 'Não é possível criar votações em uma reunião encerrada.' });
+      }
+
       const [votacaoId] = await connection('votacoes').insert({
         reuniao_id: pauta.reuniao_id,
         pauta_id,
@@ -115,6 +120,11 @@ class VotacoesController {
 
       if (votacao.status === 'Encerrada') {
         return res.status(400).json({ error: 'Uma votação encerrada não pode ser reaberta.' });
+      }
+
+      const reuniaoDaVotacao = await connection('reunioes').where({ id: votacao.reuniao_id }).first();
+      if (reuniaoDaVotacao && reuniaoDaVotacao.status === 'Encerrada') {
+        return res.status(400).json({ error: 'Não é possível alterar votações de uma reunião encerrada.' });
       }
 
       if (status === 'Aberta') {

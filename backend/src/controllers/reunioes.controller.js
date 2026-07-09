@@ -77,6 +77,16 @@ class ReunioesController {
 
       await connection('reunioes').where({ id }).update({ status });
 
+      // Regra de negócio: encerrar a reunião encerra também qualquer votação
+      // ainda aberta ou aguardando, para que nada fique "pendente de ação"
+      // numa reunião que já terminou.
+      if (status === 'Encerrada') {
+        await connection('votacoes')
+          .where({ reuniao_id: id })
+          .whereNot({ status: 'Encerrada' })
+          .update({ status: 'Encerrada' });
+      }
+
       await auditoriaService.registrar(req, {
         acao: `Reunião ${id} alterada para status "${status}"`
       });
@@ -172,6 +182,11 @@ class ReunioesController {
       const pauta = await connection('pautas').where({ id }).first();
       if (!pauta) {
         return res.status(404).json({ error: 'Pauta não encontrada.' });
+      }
+
+      const reuniao = await connection('reunioes').where({ id: pauta.reuniao_id }).first();
+      if (reuniao && reuniao.status === 'Encerrada') {
+        return res.status(400).json({ error: 'Não é possível enviar anexos em uma reunião encerrada.' });
       }
 
       await connection('pautas').where({ id }).update({ anexo_pdf: req.file.buffer });
