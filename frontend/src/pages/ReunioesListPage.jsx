@@ -108,12 +108,12 @@ export function ReunioesListPage() {
           <tbody>
             {reunioes.map((r) => (
               <tr key={r.id}>
-                <td>{r.nome_assembleia}</td>
-                <td>{formatarDataHora(r.data, r.hora)}</td>
-                <td>
+                <td data-label="Assembleia">{r.nome_assembleia}</td>
+                <td data-label="Data">{formatarDataHora(r.data, r.hora)}</td>
+                <td data-label="Status">
                   <StatusBadge status={r.status} />
                 </td>
-                <td className="table-actions">
+                <td data-label="Ações" className="table-actions">
                   <Link to={`/reunioes/${r.id}`} className="btn btn-ghost">
                     Abrir
                   </Link>

@@ -38,11 +38,11 @@ export function AuditoriaPage() {
           <tbody>
             {logs.map((log) => (
               <tr key={log.id}>
-                <td>{log.acao}</td>
-                <td>{log.proprietario_nome || log.procurador_nome || '—'}</td>
-                <td>{log.data_hora}</td>
-                <td>{log.ip}</td>
-                <td className="cell-truncate" title={log.navegador}>
+                <td data-label="Ação">{log.acao}</td>
+                <td data-label="Responsável">{log.proprietario_nome || log.procurador_nome || '—'}</td>
+                <td data-label="Data/Hora">{log.data_hora}</td>
+                <td data-label="IP">{log.ip}</td>
+                <td data-label="Navegador" className="cell-truncate" title={log.navegador}>
                   {log.navegador}
                 </td>
               </tr>

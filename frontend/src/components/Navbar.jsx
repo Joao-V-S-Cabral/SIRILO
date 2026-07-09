@@ -27,7 +27,8 @@ export function Navbar() {
       </nav>
       <div className="navbar-user">
         <span className="navbar-user-name">
-          {nomeExibido} <span className="badge badge-neutral">{sessao?.perfil}</span>
+          <span className="navbar-user-fullname">{nomeExibido}</span>
+          <span className="badge badge-neutral">{sessao?.perfil}</span>
         </span>
         <button type="button" className="btn btn-ghost" onClick={handleLogout}>
           Sair
