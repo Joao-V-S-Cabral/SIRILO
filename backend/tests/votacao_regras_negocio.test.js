@@ -165,6 +165,51 @@ describe('Regras de negócio de votação', () => {
     expect(resAtiva.body.segundos_restantes).toBeLessThanOrEqual(600); // 10 minutos = 600 segundos
   });
 
+  test('encerra automaticamente e rejeita votos quando o tempo limite de duração expira', async () => {
+    // 1. Cria uma pauta e uma votação exclusivas para este teste (duração 1 minuto)
+    const pautaRes = await request(app)
+      .post('/api/pautas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reuniao_id: 1, titulo: 'Pauta Expiracao', descricao: 'Fixture.' });
+
+    const votacaoRes = await request(app)
+      .post('/api/votacoes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ pauta_id: pautaRes.body.id, pergunta: 'Votação Rápida?', tipo_resposta: 'Sim_Nao', duracao_minutos: 1 });
+
+    const votacaoId = votacaoRes.body.id;
+
+    // 2. Abre a votação
+    await request(app)
+      .patch(`/api/votacoes/${votacaoId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'Aberta' });
+
+    // 3. Força a data de abertura no banco de dados para 2 minutos atrás (para simular expiração)
+    const connection = require('../src/database/connection');
+    const doisMinutosAtras = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    await connection('votacoes').where({ id: votacaoId }).update({ aberta_em: doisMinutosAtras });
+
+    const token = await loginProprietarioB();
+
+    // 4. Tentativa de voto: deve ser rejeitada com 400 por expiração de tempo
+    const resVoto = await request(app)
+      .post('/api/votacoes/votar')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ votacao_id: votacaoId, opcao_escolhida: 'Sim' });
+    
+    expect(resVoto.status).toBe(400);
+    expect(resVoto.body.error).toContain('tempo limite esgotado');
+
+    // 5. Consulta ativa: deve retornar null porque o backend autotravou e fechou a votação
+    const resAtiva = await request(app)
+      .get(`/api/votacoes/ativa?reuniao_id=1`)
+      .set('Authorization', `Bearer ${token}`);
+    
+    expect(resAtiva.status).toBe(200);
+    expect(resAtiva.body).toBeNull();
+  });
+
   test('rejeita voto em votação que não está aberta', async () => {
     // Encerra a votação e tenta votar em seguida
     await request(app)

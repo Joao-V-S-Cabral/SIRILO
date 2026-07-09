@@ -193,6 +193,11 @@ class VotacoesController {
         const decorridoSegundos = Math.floor((agoraMs - abertaEmMs) / 1000);
         const totalSegundos = (votacao.duracao_minutos || 0) * 60;
         segundos_restantes = Math.max(0, totalSegundos - decorridoSegundos);
+
+        if (segundos_restantes <= 0) {
+          await connection('votacoes').where({ id: votacao.id }).update({ status: 'Encerrada' });
+          return res.json(null);
+        }
       }
 
       return res.json({ ...comOpcoesParseadas(votacao), pauta, ja_votou, segundos_restantes });

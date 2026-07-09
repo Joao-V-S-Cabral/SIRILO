@@ -47,6 +47,18 @@ class VotosController {
         return res.status(400).json({ error: 'Esta votação não está aberta no momento.' });
       }
 
+      // Validar tempo limite
+      if (votacao.aberta_em) {
+        const abertaEmMs = new Date(votacao.aberta_em).getTime();
+        const agoraMs = Date.now();
+        const decorridoSegundos = Math.floor((agoraMs - abertaEmMs) / 1000);
+        const totalSegundos = (votacao.duracao_minutos || 0) * 60;
+        if (decorridoSegundos >= totalSegundos) {
+          await connection('votacoes').where({ id: votacao.id }).update({ status: 'Encerrada' });
+          return res.status(400).json({ error: 'Esta votação já foi encerrada por tempo limite esgotado.' });
+        }
+      }
+
       // Regra 2: a opção precisa pertencer ao conjunto fechado de opções da votação
       // (vale para Sim_Nao, Multipla_Escolha e Eleicao igualmente).
       let opcoesValidas = ['Sim', 'Não'];

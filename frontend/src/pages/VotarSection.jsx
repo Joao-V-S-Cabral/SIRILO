@@ -13,6 +13,7 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
   const [mensagemSucesso, setMensagemSucesso] = useState(null);
   const [votadoAgora, setVotadoAgora] = useState(false);
   const [segundosRestantes, setSegundosRestantes] = useState(null);
+  const [tempoEsgotado, setTempoEsgotado] = useState(false);
   const votacaoAnteriorId = useRef(null);
 
   useEffect(() => {
@@ -29,6 +30,7 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
             votacaoAnteriorId.current = dados.id;
             setMensagemSucesso(null);
             setOpcaoSelecionada('');
+            setTempoEsgotado(false);
             const rest = typeof dados.segundos_restantes === 'number'
               ? dados.segundos_restantes
               : (dados.duracao_minutos || 0) * 60;
@@ -51,7 +53,11 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
   }, [reuniaoId]);
 
   useEffect(() => {
-    if (segundosRestantes === null || segundosRestantes <= 0) return;
+    if (segundosRestantes === null) return;
+    if (segundosRestantes <= 0) {
+      setTempoEsgotado(true);
+      return;
+    }
     const timer = setInterval(() => {
       setSegundosRestantes((s) => (s === null ? null : Math.max(0, s - 1)));
     }, 1000);
@@ -103,6 +109,8 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
 
       {votadoAgora ? (
         <p className="success-text">{mensagemSucesso || 'Voto já registrado nesta votação.'}</p>
+      ) : tempoEsgotado ? (
+        <p className="error-text">Tempo limite esgotado. Votação encerrada.</p>
       ) : (
         <form onSubmit={handleVotar}>
           <div className="opcoes-list">
