@@ -135,7 +135,14 @@ class VotacoesController {
           .update({ status: 'Encerrada' });
       }
 
-      await connection('votacoes').where({ id }).update({ status });
+      const atualizacao = { status };
+      if (status === 'Aberta') {
+        // Marca o instante exato da abertura para o cronômetro do frontend
+        // conseguir calcular o tempo restante de forma consistente entre
+        // recarregamentos de página (ver migration add_aberta_em_to_votacoes).
+        atualizacao.aberta_em = connection.raw("datetime('now', 'localtime')");
+      }
+      await connection('votacoes').where({ id }).update(atualizacao);
 
       await auditoriaService.registrar(req, {
         acao: `Votação ${id} alterada para status "${status}"`

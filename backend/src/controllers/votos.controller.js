@@ -136,6 +136,30 @@ class VotosController {
   }
 
   /**
+   * GET /api/votacoes/:id/meu-voto
+   * Requer autenticação de um votante (Proprietário ou Procurador).
+   *
+   * Permite que o frontend, ao recarregar a página, saiba se o
+   * proprietário da sessão atual já votou nesta votação (e qual foi a
+   * opção escolhida), em vez de depender só de um estado local do
+   * componente React que se perde a cada recarregamento.
+   */
+  async meuVoto(req, res) {
+    const { id } = req.params;
+    const { proprietario_id } = req.usuario;
+
+    try {
+      const voto = await connection('votos')
+        .where({ votacao_id: id, proprietario_id })
+        .first();
+
+      return res.json({ voto: voto || null });
+    } catch (error) {
+      return res.status(500).json({ error: 'Erro ao verificar voto.', details: error.message });
+    }
+  }
+
+  /**
    * GET /api/votacoes/:id/resultados
    * Calcula a soma de pesos por opção e a porcentagem relativa (RF19).
    * Trata divisão por zero com segurança, retornando 0% para todas as opções

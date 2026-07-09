@@ -16,5 +16,6 @@ routes.get('/votacoes/:id/resultados', autenticar, votosController.resultados);
 
 // Voto (RF12, RF18, RF19) — apenas Proprietário ou Procurador
 routes.post('/votacoes/votar', autenticar, apenasVotante, votosController.votar);
+routes.get('/votacoes/:id/meu-voto', autenticar, apenasVotante, votosController.meuVoto);
 
 module.exports = routes;
