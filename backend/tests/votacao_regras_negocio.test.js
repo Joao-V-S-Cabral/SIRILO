@@ -132,6 +132,39 @@ describe('Regras de negócio de votação', () => {
     expect(resAtiva.body.ja_votou).toBe(true);
   });
 
+  test('calcula corretamente segundos_restantes na votação ativa com base na hora de abertura', async () => {
+    // 1. Cria uma pauta e uma votação exclusivas para este teste
+    const pautaRes = await request(app)
+      .post('/api/pautas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reuniao_id: 1, titulo: 'Pauta Isolada Timer', descricao: 'Fixture.' });
+
+    const votacaoRes = await request(app)
+      .post('/api/votacoes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ pauta_id: pautaRes.body.id, pergunta: 'Timer Isolado?', tipo_resposta: 'Sim_Nao', duracao_minutos: 10 });
+
+    const votacaoId = votacaoRes.body.id;
+
+    // 2. Abre a votação
+    await request(app)
+      .patch(`/api/votacoes/${votacaoId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'Aberta' });
+
+    const token = await loginProprietarioB();
+
+    // 3. Consulta a votação ativa e verifica segundos_restantes
+    const resAtiva = await request(app)
+      .get(`/api/votacoes/ativa?reuniao_id=1`)
+      .set('Authorization', `Bearer ${token}`);
+    
+    expect(resAtiva.status).toBe(200);
+    expect(resAtiva.body.id).toBe(votacaoId);
+    expect(resAtiva.body.segundos_restantes).toBeGreaterThan(0);
+    expect(resAtiva.body.segundos_restantes).toBeLessThanOrEqual(600); // 10 minutos = 600 segundos
+  });
+
   test('rejeita voto em votação que não está aberta', async () => {
     // Encerra a votação e tenta votar em seguida
     await request(app)

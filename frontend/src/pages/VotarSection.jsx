@@ -29,7 +29,10 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
             votacaoAnteriorId.current = dados.id;
             setMensagemSucesso(null);
             setOpcaoSelecionada('');
-            setSegundosRestantes((dados.duracao_minutos || 0) * 60);
+            const rest = typeof dados.segundos_restantes === 'number'
+              ? dados.segundos_restantes
+              : (dados.duracao_minutos || 0) * 60;
+            setSegundosRestantes(rest);
           }
         } else {
           votacaoAnteriorId.current = null;

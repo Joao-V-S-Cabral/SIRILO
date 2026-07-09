@@ -117,15 +117,18 @@ class VotacoesController {
         return res.status(400).json({ error: 'Uma votação encerrada não pode ser reaberta.' });
       }
 
+      const updateData = { status };
       if (status === 'Aberta') {
         // Garante que não existam duas votações abertas simultaneamente na mesma reunião.
         await connection('votacoes')
           .where({ reuniao_id: votacao.reuniao_id, status: 'Aberta' })
           .andWhereNot({ id })
           .update({ status: 'Encerrada' });
+
+        updateData.aberta_em = new Date().toISOString();
       }
 
-      await connection('votacoes').where({ id }).update({ status });
+      await connection('votacoes').where({ id }).update(updateData);
 
       await auditoriaService.registrar(req, {
         acao: `Votação ${id} alterada para status "${status}"`
@@ -183,7 +186,16 @@ class VotacoesController {
         ja_votou = !!voto;
       }
 
-      return res.json({ ...comOpcoesParseadas(votacao), pauta, ja_votou });
+      let segundos_restantes = null;
+      if (votacao.aberta_em) {
+        const abertaEmMs = new Date(votacao.aberta_em).getTime();
+        const agoraMs = Date.now();
+        const decorridoSegundos = Math.floor((agoraMs - abertaEmMs) / 1000);
+        const totalSegundos = (votacao.duracao_minutos || 0) * 60;
+        segundos_restantes = Math.max(0, totalSegundos - decorridoSegundos);
+      }
+
+      return res.json({ ...comOpcoesParseadas(votacao), pauta, ja_votou, segundos_restantes });
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao buscar votação ativa.', details: error.message });
     }
