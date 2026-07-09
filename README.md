@@ -6,7 +6,7 @@ O objetivo do sistema é facilitar a execução de assembleias e votações em c
 
 ---
 
-## 📂 Organização do Repositório
+##  Organização do Repositório
 
 Para manter o projeto limpo e organizado, a documentação de engenharia e a arquitetura do sistema estão localizadas na pasta `docs/`:
 
@@ -18,7 +18,7 @@ Para manter o projeto limpo e organizado, a documentação de engenharia e a arq
 
 ---
 
-## 💻 Estrutura de Código
+##  Estrutura de Código
 
 O projeto está estruturado sob o modelo de monorepo simplificado:
 
@@ -28,7 +28,7 @@ O projeto está estruturado sob o modelo de monorepo simplificado:
 
 ---
 
-## 🚀 Como Executar o Projeto
+##  Como Executar o Projeto
 
 Certifique-se de ter o **Node.js** instalado em sua máquina.
 
@@ -49,7 +49,7 @@ npm run dev
 
 ---
 
-## 🛠️ Tecnologias Principais
+##  Tecnologias Principais
 
 *   **Frontend:** React.js, Vite, Vanilla CSS.
 *   **Backend:** Node.js, Express.js, Knex.js.
