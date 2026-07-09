@@ -4,31 +4,35 @@ const auditoriaService = require('../services/auditoria.service');
 class VotosController {
   /**
    * POST /api/votacoes/votar
-   * Body: {
-   *   votacao_id,
-   *   proprietario_id,       // dono do voto (mesmo quando representado por procurador)
-   *   procurador_id?,        // presente quando quem está logado é um procurador
-   *   opcao_escolhida
-   * }
+   * Requer autenticação (middleware `autenticar` + `apenasVotante`).
+   * Body: { votacao_id, opcao_escolhida }
+   *
+   * IMPORTANTE: proprietario_id e procurador_id NÃO vêm mais do corpo da
+   * requisição (isso permitiria que qualquer cliente votasse em nome de
+   * outra pessoa). Eles são extraídos de `req.usuario`, que é populado
+   * pelo middleware de autenticação a partir do JWT emitido no login —
+   * ou seja, refletem exatamente quem de fato autenticou na sessão.
    *
    * Implementa as regras de negócio centrais do sistema:
    *  1. A votação precisa estar com status "Aberta".
-   *  2. Se o login ativo for de um procurador (RF12), valida que ele de fato
-   *     representa o proprietario_id informado.
-   *  3. Um proprietário (ou seu procurador) só pode votar uma vez por votação (RF18),
+   *  2. A opção escolhida precisa constar na lista fechada de opções da votação.
+   *  3. Se o login ativo for de um procurador (RF12), valida que ele de fato
+   *     representa o proprietario_id da sessão e está credenciado na mesma reunião.
+   *  4. Um proprietário (ou seu procurador) só pode votar uma vez por votação (RF18),
    *     garantido tanto na aplicação quanto pela constraint UNIQUE do banco.
-   *  4. Verificação de adimplência (RF19): proprietário inadimplente vota com peso 0.0.
-   *  5. Cálculo ponderado (RF19): caso contrário, aplica o peso_voto cadastrado
+   *  5. Verificação de adimplência (RF19): proprietário inadimplente vota com peso 0.0.
+   *  6. Cálculo ponderado (RF19): caso contrário, aplica o peso_voto cadastrado
    *     (Terreno = 1.0, Casa construída = 2.0, já refletido em peso_voto).
-   *  6. Captura IP e User-Agent para auditoria (RF4) e para a própria linha do voto.
-   *  7. O voto, uma vez salvo, é definitivo e irreversível (RF18) — não há rota de edição/remoção.
+   *  7. Captura IP e User-Agent para auditoria (RF4) e para a própria linha do voto.
+   *  8. O voto, uma vez salvo, é definitivo e irreversível (RF18) — não há rota de edição/remoção.
    */
   async votar(req, res) {
-    const { votacao_id, proprietario_id, procurador_id, opcao_escolhida } = req.body;
+    const { votacao_id, opcao_escolhida } = req.body;
+    const { proprietario_id, procurador_id } = req.usuario; // dados confiáveis do JWT
 
-    if (!votacao_id || !proprietario_id || !opcao_escolhida) {
+    if (!votacao_id || !opcao_escolhida) {
       return res.status(400).json({
-        error: 'Informe votacao_id, proprietario_id e opcao_escolhida.'
+        error: 'Informe votacao_id e opcao_escolhida.'
       });
     }
 
@@ -43,9 +47,18 @@ class VotosController {
         return res.status(400).json({ error: 'Esta votação não está aberta no momento.' });
       }
 
-      // Validação de opção para votações Sim/Não
-      if (votacao.tipo_resposta === 'Sim_Nao' && !['Sim', 'Não'].includes(opcao_escolhida)) {
-        return res.status(400).json({ error: 'Para esta votação, opcao_escolhida deve ser "Sim" ou "Não".' });
+      // Regra 2: a opção precisa pertencer ao conjunto fechado de opções da votação
+      // (vale para Sim_Nao, Multipla_Escolha e Eleicao igualmente).
+      let opcoesValidas = ['Sim', 'Não'];
+      try {
+        opcoesValidas = JSON.parse(votacao.opcoes);
+      } catch (_e) {
+        // mantém o padrão Sim/Não se o campo não estiver populado corretamente
+      }
+      if (!opcoesValidas.includes(opcao_escolhida)) {
+        return res.status(400).json({
+          error: `Opção inválida. Opções válidas para esta votação: ${opcoesValidas.join(', ')}.`
+        });
       }
 
       const proprietario = await connection('proprietarios').where({ id: proprietario_id }).first();
@@ -53,7 +66,7 @@ class VotosController {
         return res.status(404).json({ error: 'Proprietário não encontrado.' });
       }
 
-      // Regra 2: se um procurador está votando, ele precisa realmente representar
+      // Regra 3: se um procurador está votando, ele precisa realmente representar
       // este proprietário nesta mesma reunião (RF12).
       if (procurador_id) {
         const procurador = await connection('procuradores').where({ id: procurador_id }).first();
@@ -69,7 +82,7 @@ class VotosController {
         }
       }
 
-      // Regra 3: unicidade do voto — checagem prévia (a garantia definitiva vem da constraint UNIQUE).
+      // Regra 4: unicidade do voto — checagem prévia (a garantia definitiva vem da constraint UNIQUE).
       const votoExistente = await connection('votos')
         .where({ votacao_id, proprietario_id })
         .first();
@@ -78,7 +91,7 @@ class VotosController {
         return res.status(409).json({ error: 'Este proprietário já votou nesta pauta.' });
       }
 
-      // Regras 4 e 5: adimplência define o peso aplicado ao voto.
+      // Regras 5 e 6: adimplência define o peso aplicado ao voto.
       const pesoAplicado = proprietario.inadimplente ? 0.0 : Number(proprietario.peso_voto);
 
       const ip = require('../services/auditoria.service').extrairIp(req);

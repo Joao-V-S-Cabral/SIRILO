@@ -1,5 +1,6 @@
 const connection = require('../database/connection');
 const auditoriaService = require('../services/auditoria.service');
+const { emitirToken } = require('../services/jwt.service');
 
 class AuthController {
   /**
@@ -46,7 +47,15 @@ class AuthController {
           acao: `Login (Procurador) representando proprietario_id=${proprietarioRepresentado.id}`
         });
 
+        const token = emitirToken({
+          perfil: 'Procurador',
+          proprietario_id: proprietarioRepresentado.id,
+          procurador_id: procurador.id,
+          reuniao_id: procurador.reuniao_id
+        });
+
         return res.json({
+          token,
           perfil: 'Procurador',
           procurador_id: procurador.id,
           reuniao_id: procurador.reuniao_id,
@@ -74,7 +83,15 @@ class AuthController {
         acao: `Login (${usuario.tipo_acesso})`
       });
 
+      const token = emitirToken({
+        perfil: usuario.tipo_acesso, // 'Admin' ou 'Proprietario'
+        proprietario_id: usuario.id,
+        procurador_id: null,
+        reuniao_id: null
+      });
+
       return res.json({
+        token,
         perfil: usuario.tipo_acesso, // 'Admin' ou 'Proprietario'
         proprietario_id: usuario.id,
         nome: usuario.nome,

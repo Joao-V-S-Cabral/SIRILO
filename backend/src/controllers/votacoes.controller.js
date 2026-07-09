@@ -3,15 +3,34 @@ const auditoriaService = require('../services/auditoria.service');
 
 const TIPOS_RESPOSTA_VALIDOS = ['Sim_Nao', 'Multipla_Escolha', 'Eleicao'];
 const STATUS_VALIDOS = ['Aguardando', 'Aberta', 'Encerrada'];
+const OPCOES_PADRAO_SIM_NAO = ['Sim', 'Não'];
+
+/** Serializa a votação trocando o campo `opcoes` (texto JSON) por um array de fato. */
+function comOpcoesParseadas(votacao) {
+  if (!votacao) return votacao;
+  let opcoes = OPCOES_PADRAO_SIM_NAO;
+  try {
+    opcoes = JSON.parse(votacao.opcoes);
+  } catch (_e) {
+    // Mantém o padrão se, por algum motivo, o valor salvo não for um JSON válido.
+  }
+  return { ...votacao, opcoes };
+}
 
 class VotacoesController {
   /**
    * POST /api/votacoes (RF14)
-   * Body: { pauta_id, pergunta, tipo_resposta, duracao_minutos, visibilidade }
+   * Body: { pauta_id, pergunta, tipo_resposta, duracao_minutos, visibilidade, opcoes }
+   *
+   * Regra de negócio: toda votação nasce com um conjunto FECHADO de opções válidas.
+   *  - Sim_Nao: sempre ["Sim", "Não"] (opcoes enviado no body é ignorado para esse tipo).
+   *  - Multipla_Escolha / Eleicao: `opcoes` é obrigatório e precisa ser um array
+   *    com pelo menos 2 strings únicas (ex: nomes dos candidatos ou alternativas de pauta).
+   *
    * Cria uma sessão de votação associada a uma pauta, no status inicial "Aguardando".
    */
   async criar(req, res) {
-    const { pauta_id, pergunta, tipo_resposta, duracao_minutos, visibilidade } = req.body;
+    const { pauta_id, pergunta, tipo_resposta, duracao_minutos, visibilidade, opcoes } = req.body;
 
     if (!pauta_id || !pergunta) {
       return res.status(400).json({ error: 'Informe pauta_id e pergunta.' });
@@ -22,6 +41,23 @@ class VotacoesController {
       return res.status(400).json({
         error: `tipo_resposta inválido. Use um dos seguintes: ${TIPOS_RESPOSTA_VALIDOS.join(', ')}.`
       });
+    }
+
+    let opcoesFinais;
+    if (tipoFinal === 'Sim_Nao') {
+      opcoesFinais = OPCOES_PADRAO_SIM_NAO;
+    } else {
+      if (!Array.isArray(opcoes) || opcoes.length < 2) {
+        return res.status(400).json({
+          error: 'Para tipo_resposta "Multipla_Escolha" ou "Eleicao", informe "opcoes" como um array com pelo menos 2 itens.'
+        });
+      }
+      const opcoesNormalizadas = opcoes.map(o => String(o).trim()).filter(Boolean);
+      const semDuplicatas = new Set(opcoesNormalizadas);
+      if (semDuplicatas.size !== opcoesNormalizadas.length || opcoesNormalizadas.length < 2) {
+        return res.status(400).json({ error: 'As opções informadas devem ser únicas e não vazias (mínimo 2).' });
+      }
+      opcoesFinais = opcoesNormalizadas;
     }
 
     try {
@@ -37,7 +73,8 @@ class VotacoesController {
         tipo_resposta: tipoFinal,
         visibilidade: visibilidade || 'Aberta',
         status: 'Aguardando',
-        duracao_minutos: duracao_minutos || 15
+        duracao_minutos: duracao_minutos || 15,
+        opcoes: JSON.stringify(opcoesFinais)
       });
 
       await auditoriaService.registrar(req, {
@@ -45,7 +82,7 @@ class VotacoesController {
       });
 
       const votacaoCriada = await connection('votacoes').where({ id: votacaoId }).first();
-      return res.status(201).json(votacaoCriada);
+      return res.status(201).json(comOpcoesParseadas(votacaoCriada));
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao criar votação.', details: error.message });
     }
@@ -95,7 +132,7 @@ class VotacoesController {
       });
 
       const votacaoAtualizada = await connection('votacoes').where({ id }).first();
-      return res.json(votacaoAtualizada);
+      return res.json(comOpcoesParseadas(votacaoAtualizada));
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao atualizar status da votação.', details: error.message });
     }
@@ -109,7 +146,7 @@ class VotacoesController {
       if (!votacao) {
         return res.status(404).json({ error: 'Votação não encontrada.' });
       }
-      return res.json(votacao);
+      return res.json(comOpcoesParseadas(votacao));
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao buscar votação.', details: error.message });
     }
@@ -138,7 +175,7 @@ class VotacoesController {
 
       const pauta = await connection('pautas').where({ id: votacao.pauta_id }).first();
 
-      return res.json({ ...votacao, pauta });
+      return res.json({ ...comOpcoesParseadas(votacao), pauta });
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao buscar votação ativa.', details: error.message });
     }

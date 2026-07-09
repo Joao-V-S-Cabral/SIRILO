@@ -87,6 +87,45 @@ class ReunioesController {
     }
   }
 
+  /**
+   * POST /api/pautas (Admin) — cria uma nova pauta dentro de uma reunião existente.
+   * Body: { reuniao_id, titulo, descricao }
+   */
+  async criarPauta(req, res) {
+    const { reuniao_id, titulo, descricao } = req.body;
+
+    if (!reuniao_id || !titulo || !descricao) {
+      return res.status(400).json({ error: 'Informe reuniao_id, titulo e descricao.' });
+    }
+
+    try {
+      const reuniao = await connection('reunioes').where({ id: reuniao_id }).first();
+      if (!reuniao) {
+        return res.status(404).json({ error: 'Reunião não encontrada.' });
+      }
+
+      // Regra de negócio: não faz sentido cadastrar pauta nova em reunião já encerrada.
+      if (reuniao.status === 'Encerrada') {
+        return res.status(400).json({ error: 'Não é possível adicionar pautas a uma reunião encerrada.' });
+      }
+
+      const [pautaId] = await connection('pautas').insert({ reuniao_id, titulo, descricao });
+
+      await auditoriaService.registrar(req, {
+        acao: `Pauta ${pautaId} ("${titulo}") criada na reunião ${reuniao_id}`
+      });
+
+      const pautaCriada = await connection('pautas')
+        .where({ id: pautaId })
+        .select('id', 'reuniao_id', 'titulo', 'descricao')
+        .first();
+
+      return res.status(201).json(pautaCriada);
+    } catch (error) {
+      return res.status(500).json({ error: 'Erro ao criar pauta.', details: error.message });
+    }
+  }
+
   /** GET /api/pautas/:id/anexo - baixa o PDF anexado à pauta (RF30) */
   async baixarAnexo(req, res) {
     const { id } = req.params;
@@ -107,6 +146,43 @@ class ReunioesController {
       return res.send(pauta.anexo_pdf);
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao baixar anexo da pauta.', details: error.message });
+    }
+  }
+
+  /**
+   * POST /api/pautas/:id/anexo (Admin) — faz upload do PDF anexado à pauta (RF30).
+   * Espera multipart/form-data com o campo de arquivo chamado "arquivo".
+   * Validações: precisa ser PDF de fato (por assinatura de bytes, não só extensão)
+   * e respeitar o limite de tamanho configurado no multer (ver rota).
+   */
+  async uploadAnexo(req, res) {
+    const { id } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Envie um arquivo no campo "arquivo".' });
+    }
+
+    // Validação de conteúdo: todo PDF de verdade começa com a assinatura "%PDF-".
+    const assinaturaPdf = req.file.buffer.slice(0, 5).toString('ascii');
+    if (req.file.mimetype !== 'application/pdf' || assinaturaPdf !== '%PDF-') {
+      return res.status(400).json({ error: 'O arquivo enviado precisa ser um PDF válido.' });
+    }
+
+    try {
+      const pauta = await connection('pautas').where({ id }).first();
+      if (!pauta) {
+        return res.status(404).json({ error: 'Pauta não encontrada.' });
+      }
+
+      await connection('pautas').where({ id }).update({ anexo_pdf: req.file.buffer });
+
+      await auditoriaService.registrar(req, {
+        acao: `Anexo PDF enviado para a pauta ${id} ("${pauta.titulo}")`
+      });
+
+      return res.json({ status: 'success', message: 'Anexo enviado com sucesso.' });
+    } catch (error) {
+      return res.status(500).json({ error: 'Erro ao enviar anexo da pauta.', details: error.message });
     }
   }
 }
