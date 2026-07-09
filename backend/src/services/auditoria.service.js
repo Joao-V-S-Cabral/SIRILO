@@ -34,6 +34,10 @@ async function registrar(req, { proprietario_id = null, procurador_id = null, ac
       proprietario_id,
       procurador_id,
       acao,
+      // O default da coluna (CURRENT_TIMESTAMP) grava em UTC; como o SIRILO
+      // roda num único servidor local, gravamos direto no horário local do
+      // servidor para exibir a hora correta no log de auditoria.
+      data_hora: connection.raw("datetime('now', 'localtime')"),
       ip: extrairIp(req),
       navegador: extrairNavegador(req)
     });
