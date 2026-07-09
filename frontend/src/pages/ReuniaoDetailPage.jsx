@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { atualizarStatusReuniao, baixarAnexoPauta, criarPauta, detalharReuniao, uploadAnexoPauta } from '../api/reunioes';
+import { atualizarStatusReuniao, baixarAnexoPauta, criarPauta, detalharReuniao, removerAnexoPauta, uploadAnexoPauta } from '../api/reunioes';
 import { atualizarStatusVotacao, criarVotacao } from '../api/votacoes';
 import { extractErrorMessage } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
@@ -112,6 +112,17 @@ function PautaCard({ pauta, reuniao, isAdmin, onErro, onAviso, onAtualizar }) {
     }
   }
 
+  async function handleRemoverAnexo() {
+    if (!window.confirm('Remover o anexo desta pauta? Esta ação não pode ser desfeita.')) return;
+    try {
+      await removerAnexoPauta(pauta.id);
+      onAviso('Anexo removido com sucesso.');
+      onAtualizar();
+    } catch (err) {
+      onErro(extractErrorMessage(err, 'Não foi possível remover o anexo.'));
+    }
+  }
+
   async function handleAtualizarStatusVotacao(votacao, status) {
     try {
       await atualizarStatusVotacao(votacao.id, status);
@@ -129,12 +140,19 @@ function PautaCard({ pauta, reuniao, isAdmin, onErro, onAviso, onAtualizar }) {
           <p>{pauta.descricao}</p>
         </div>
         <div className="pauta-actions">
-          <button type="button" className="btn btn-ghost" onClick={handleBaixarAnexo}>
-            Baixar anexo
-          </button>
+          {pauta.tem_anexo && (
+            <button type="button" className="btn btn-ghost" onClick={handleBaixarAnexo}>
+              Baixar anexo
+            </button>
+          )}
+          {isAdmin && !reuniaoEncerrada && pauta.tem_anexo && (
+            <button type="button" className="btn btn-ghost" onClick={handleRemoverAnexo}>
+              Excluir anexo
+            </button>
+          )}
           {isAdmin && !reuniaoEncerrada && (
             <label className="btn btn-ghost file-btn">
-              Enviar anexo
+              {pauta.tem_anexo ? 'Substituir anexo' : 'Enviar anexo'}
               <input
                 type="file"
                 accept="application/pdf"

@@ -37,3 +37,7 @@ export async function baixarAnexoPauta(pautaId, nomeArquivo = `pauta_${pautaId}.
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+export function removerAnexoPauta(pautaId) {
+  return client.delete(`/pautas/${pautaId}/anexo`).then((res) => res.data);
+}
