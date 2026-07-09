@@ -23,14 +23,15 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
         const dados = await votacaoAtiva(reuniaoId);
         if (!ativo) return;
         setVotacao(dados);
-        if (dados && dados.id !== votacaoAnteriorId.current) {
-          votacaoAnteriorId.current = dados.id;
-          setVotadoAgora(false);
-          setMensagemSucesso(null);
-          setOpcaoSelecionada('');
-          setSegundosRestantes((dados.duracao_minutos || 0) * 60);
-        }
-        if (!dados) {
+        if (dados) {
+          setVotadoAgora(dados.ja_votou || false);
+          if (dados.id !== votacaoAnteriorId.current) {
+            votacaoAnteriorId.current = dados.id;
+            setMensagemSucesso(null);
+            setOpcaoSelecionada('');
+            setSegundosRestantes((dados.duracao_minutos || 0) * 60);
+          }
+        } else {
           votacaoAnteriorId.current = null;
         }
       } catch {

@@ -175,7 +175,15 @@ class VotacoesController {
 
       const pauta = await connection('pautas').where({ id: votacao.pauta_id }).first();
 
-      return res.json({ ...comOpcoesParseadas(votacao), pauta });
+      let ja_votou = false;
+      if (req.usuario && req.usuario.proprietario_id) {
+        const voto = await connection('votos')
+          .where({ votacao_id: votacao.id, proprietario_id: req.usuario.proprietario_id })
+          .first();
+        ja_votou = !!voto;
+      }
+
+      return res.json({ ...comOpcoesParseadas(votacao), pauta, ja_votou });
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao buscar votação ativa.', details: error.message });
     }

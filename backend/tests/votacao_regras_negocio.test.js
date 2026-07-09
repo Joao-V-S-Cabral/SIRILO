@@ -88,6 +88,50 @@ describe('Regras de negócio de votação', () => {
     expect(res.status).toBe(400);
   });
 
+  test('indica corretamente ja_votou como true ou false ao buscar a votação ativa', async () => {
+    // 1. Cria uma pauta e uma votação exclusivas para este teste
+    const pautaRes = await request(app)
+      .post('/api/pautas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reuniao_id: 1, titulo: 'Pauta Isolada Polling', descricao: 'Fixture.' });
+
+    const votacaoRes = await request(app)
+      .post('/api/votacoes')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ pauta_id: pautaRes.body.id, pergunta: 'Voto Isolado?', tipo_resposta: 'Sim_Nao' });
+
+    const votacaoId = votacaoRes.body.id;
+
+    await request(app)
+      .patch(`/api/votacoes/${votacaoId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'Aberta' });
+
+    const token = await loginProprietarioB(); // Proprietário B
+    
+    // 2. Antes de votar, ja_votou deve ser false
+    let resAtiva = await request(app)
+      .get(`/api/votacoes/ativa?reuniao_id=1`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(resAtiva.status).toBe(200);
+    expect(resAtiva.body.ja_votou).toBe(false);
+
+    // 3. Registra o voto
+    const resVoto = await request(app)
+      .post('/api/votacoes/votar')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ votacao_id: votacaoId, opcao_escolhida: 'Sim' });
+    expect(resVoto.status).toBe(201);
+
+    // 4. Depois de votar, ja_votou deve ser true
+    resAtiva = await request(app)
+      .get(`/api/votacoes/ativa?reuniao_id=1`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(resAtiva.status).toBe(200);
+    expect(resAtiva.body.id).toBe(votacaoId);
+    expect(resAtiva.body.ja_votou).toBe(true);
+  });
+
   test('rejeita voto em votação que não está aberta', async () => {
     // Encerra a votação e tenta votar em seguida
     await request(app)
