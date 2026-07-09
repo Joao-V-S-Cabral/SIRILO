@@ -24,7 +24,7 @@ export function AuditoriaPage() {
 
       {erro && <p className="error-text">{erro}</p>}
 
-      <div className="card">
+      <div className="card table-scroll">
         <table className="table">
           <thead>
             <tr>

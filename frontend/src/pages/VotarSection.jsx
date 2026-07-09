@@ -116,7 +116,7 @@ export function VotarSection({ reuniaoId, onVotoRegistrado }) {
             ))}
           </div>
           {erro && <p className="error-text">{erro}</p>}
-          <button type="submit" className="btn btn-primary" disabled={enviando || !opcaoSelecionada}>
+          <button type="submit" className="btn btn-primary btn-large" disabled={enviando || !opcaoSelecionada}>
             {enviando ? 'Registrando...' : 'Confirmar voto'}
           </button>
         </form>

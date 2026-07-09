@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { atualizarStatusReuniao, listarReunioes } from '../api/reunioes';
+import { atualizarStatusReuniao, detalharReuniao, listarReunioes } from '../api/reunioes';
 import { extractErrorMessage } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
+import { DashboardSummary } from '../components/DashboardSummary';
 import { useAuth } from '../context/AuthContext';
 import { formatarDataHora } from '../utils/votacoes';
 
@@ -19,15 +20,30 @@ const LABEL_ACAO = {
 export function ReunioesListPage() {
   const { isAdmin } = useAuth();
   const [reunioes, setReunioes] = useState([]);
+  const [votacoesAbertas, setVotacoesAbertas] = useState(0);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
   const [atualizandoId, setAtualizandoId] = useState(null);
+
+  async function contarVotacoesAbertas(listaReunioes) {
+    const emAndamento = listaReunioes.filter((r) => r.status === 'Em_Andamento');
+    const detalhes = await Promise.all(
+      emAndamento.map((r) => detalharReuniao(r.id).catch(() => null))
+    );
+    return detalhes
+      .filter(Boolean)
+      .flatMap((r) => r.pautas || [])
+      .flatMap((p) => p.votacoes || [])
+      .filter((v) => v.status === 'Aberta').length;
+  }
 
   async function carregar() {
     try {
       const dados = await listarReunioes();
       setReunioes(dados);
       setErro(null);
+      const abertas = await contarVotacoesAbertas(dados);
+      setVotacoesAbertas(abertas);
     } catch (err) {
       setErro(extractErrorMessage(err, 'Não foi possível carregar as reuniões.'));
     } finally {
@@ -55,6 +71,9 @@ export function ReunioesListPage() {
 
   if (carregando) return <p>Carregando reuniões...</p>;
 
+  const reunioesEmAndamento = reunioes.filter((r) => r.status === 'Em_Andamento').length;
+  const reunioesEncerradas = reunioes.filter((r) => r.status === 'Encerrada').length;
+
   return (
     <div>
       <div className="page-header">
@@ -63,13 +82,20 @@ export function ReunioesListPage() {
 
       {erro && <p className="error-text">{erro}</p>}
 
+      <DashboardSummary
+        totalReunioes={reunioes.length}
+        reunioesEmAndamento={reunioesEmAndamento}
+        reunioesEncerradas={reunioesEncerradas}
+        votacoesAbertas={votacoesAbertas}
+      />
+
       {!isAdmin && (
         <p className="hint-text">
           O cadastro de novas reuniões é feito pela administração do condomínio.
         </p>
       )}
 
-      <div className="card">
+      <div className="card table-scroll">
         <table className="table">
           <thead>
             <tr>
