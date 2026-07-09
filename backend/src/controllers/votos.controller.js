@@ -1,5 +1,6 @@
 const connection = require('../database/connection');
 const auditoriaService = require('../services/auditoria.service');
+const { encerrarSeExpirada } = require('../services/votacao-expiracao.service');
 
 class VotosController {
   /**
@@ -37,12 +38,14 @@ class VotosController {
     }
 
     try {
-      const votacao = await connection('votacoes').where({ id: votacao_id }).first();
+      let votacao = await connection('votacoes').where({ id: votacao_id }).first();
       if (!votacao) {
         return res.status(404).json({ error: 'Votação não encontrada.' });
       }
 
-      // Regra 1: votação precisa estar aberta
+      // Regra 1: votação precisa estar aberta (o ator "Tempo" do ERSW pode
+      // já ter encerrado automaticamente se o prazo se esgotou).
+      votacao = await encerrarSeExpirada(req, votacao);
       if (votacao.status !== 'Aberta') {
         return res.status(400).json({ error: 'Esta votação não está aberta no momento.' });
       }
@@ -169,10 +172,11 @@ class VotosController {
     const { id } = req.params;
 
     try {
-      const votacao = await connection('votacoes').where({ id }).first();
+      let votacao = await connection('votacoes').where({ id }).first();
       if (!votacao) {
         return res.status(404).json({ error: 'Votação não encontrada.' });
       }
+      votacao = await encerrarSeExpirada(req, votacao);
 
       const somaPorOpcao = await connection('votos')
         .where({ votacao_id: id })

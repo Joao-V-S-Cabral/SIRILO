@@ -1,5 +1,6 @@
 const connection = require('../database/connection');
 const auditoriaService = require('../services/auditoria.service');
+const { encerrarSeExpirada } = require('../services/votacao-expiracao.service');
 
 const TIPOS_RESPOSTA_VALIDOS = ['Sim_Nao', 'Multipla_Escolha', 'Eleicao'];
 const STATUS_VALIDOS = ['Aguardando', 'Aberta', 'Encerrada'];
@@ -159,10 +160,11 @@ class VotacoesController {
   async detalhar(req, res) {
     const { id } = req.params;
     try {
-      const votacao = await connection('votacoes').where({ id }).first();
+      let votacao = await connection('votacoes').where({ id }).first();
       if (!votacao) {
         return res.status(404).json({ error: 'Votação não encontrada.' });
       }
+      votacao = await encerrarSeExpirada(req, votacao);
       return res.json(comOpcoesParseadas(votacao));
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao buscar votação.', details: error.message });
@@ -182,11 +184,15 @@ class VotacoesController {
     }
 
     try {
-      const votacao = await connection('votacoes')
+      let votacao = await connection('votacoes')
         .where({ reuniao_id, status: 'Aberta' })
         .first();
 
-      if (!votacao) {
+      if (votacao) {
+        votacao = await encerrarSeExpirada(req, votacao);
+      }
+
+      if (!votacao || votacao.status !== 'Aberta') {
         return res.json(null);
       }
 

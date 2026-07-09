@@ -1,5 +1,6 @@
 const connection = require('../database/connection');
 const auditoriaService = require('../services/auditoria.service');
+const { encerrarSeExpirada } = require('../services/votacao-expiracao.service');
 
 const STATUS_VALIDOS = ['Agendada', 'Em_Andamento', 'Encerrada'];
 
@@ -38,7 +39,11 @@ class ReunioesController {
         .select('id', 'reuniao_id', 'titulo', 'descricao')
         .select(connection.raw('(anexo_pdf IS NOT NULL) as tem_anexo'));
 
-      const votacoes = await connection('votacoes').where({ reuniao_id: id });
+      const votacoesBrutas = await connection('votacoes').where({ reuniao_id: id });
+      // Dispara a mesma verificação de tempo esgotado (RF15/RF21) usada nos
+      // demais endpoints de votação, para o admin não ver uma votação como
+      // "Aberta" indefinidamente só porque ninguém consultou /ativa ainda.
+      const votacoes = await Promise.all(votacoesBrutas.map(v => encerrarSeExpirada(req, v)));
 
       const pautasComVotacoes = pautas.map(pauta => ({
         ...pauta,
