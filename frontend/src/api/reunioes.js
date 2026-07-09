@@ -1,11 +1,21 @@
 import client from './client';
 
+// O SQLite retorna 0/1 (numero) para o campo booleano tem_anexo, e em JSX
+// `{0 && <Botao/>}` renderiza literalmente o texto "0" na tela. Normaliza
+// para um boolean de fato assim que os dados chegam do backend.
+function comTemAnexoNormalizado(reuniao) {
+  return {
+    ...reuniao,
+    pautas: (reuniao.pautas || []).map((pauta) => ({ ...pauta, tem_anexo: Boolean(pauta.tem_anexo) })),
+  };
+}
+
 export function listarReunioes() {
-  return client.get('/reunioes').then((res) => res.data);
+  return client.get('/reunioes').then((res) => res.data.map(comTemAnexoNormalizado));
 }
 
 export function detalharReuniao(id) {
-  return client.get(`/reunioes/${id}`).then((res) => res.data);
+  return client.get(`/reunioes/${id}`).then((res) => comTemAnexoNormalizado(res.data));
 }
 
 export function atualizarStatusReuniao(id, status) {
