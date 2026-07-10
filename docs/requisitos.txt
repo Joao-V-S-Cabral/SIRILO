@@ -1,9 +1,0 @@
-Apresentar documento com arquitetura escolhida e implementar as fundionalidades de:
-
-Entrar no sistema;
-
-Criar votação;
-
-Executar votação;
-
-Verificar o resultado

@@ -5,7 +5,7 @@ const { encerrarSeExpirada } = require('../services/votacao-expiracao.service');
 const STATUS_VALIDOS = ['Agendada', 'Em_Andamento', 'Encerrada'];
 
 class ReunioesController {
-  /** GET /api/reunioes - lista reuniões com suas pautas */
+  
   async listar(req, res) {
     try {
       const reunioes = await connection('reunioes').select('*').orderBy('data', 'desc');
@@ -24,7 +24,7 @@ class ReunioesController {
     }
   }
 
-  /** GET /api/reunioes/:id - detalhe de uma reunião com pautas e votações */
+  
   async detalhar(req, res) {
     const { id } = req.params;
 
@@ -56,10 +56,7 @@ class ReunioesController {
     }
   }
 
-  /**
-   * PATCH /api/reunioes/:id/status  (RF9)
-   * Body: { status: 'Agendada' | 'Em_Andamento' | 'Encerrada' }
-   */
+  
   async atualizarStatus(req, res) {
     const { id } = req.params;
     const { status } = req.body;
@@ -103,10 +100,7 @@ class ReunioesController {
     }
   }
 
-  /**
-   * POST /api/pautas (Admin) — cria uma nova pauta dentro de uma reunião existente.
-   * Body: { reuniao_id, titulo, descricao }
-   */
+  
   async criarPauta(req, res) {
     const { reuniao_id, titulo, descricao } = req.body;
 
@@ -143,7 +137,7 @@ class ReunioesController {
     }
   }
 
-  /** GET /api/pautas/:id/anexo - baixa o PDF anexado à pauta (RF30) */
+  
   async baixarAnexo(req, res) {
     const { id } = req.params;
 
@@ -166,12 +160,7 @@ class ReunioesController {
     }
   }
 
-  /**
-   * POST /api/pautas/:id/anexo (Admin) — faz upload do PDF anexado à pauta (RF30).
-   * Espera multipart/form-data com o campo de arquivo chamado "arquivo".
-   * Validações: precisa ser PDF de fato (por assinatura de bytes, não só extensão)
-   * e respeitar o limite de tamanho configurado no multer (ver rota).
-   */
+  
   async uploadAnexo(req, res) {
     const { id } = req.params;
 
@@ -208,7 +197,7 @@ class ReunioesController {
     }
   }
 
-  /** DELETE /api/pautas/:id/anexo (Admin) — remove o PDF anexado à pauta. */
+  
   async removerAnexo(req, res) {
     const { id } = req.params;
 

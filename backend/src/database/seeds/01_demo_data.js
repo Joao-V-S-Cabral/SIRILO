@@ -1,7 +1,4 @@
-/**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> } 
- */
+
 exports.seed = async function(knex) {
   // Limpa tabelas em ordem inversa de chaves estrangeiras
   await knex('logs_auditoria').del();
@@ -12,6 +9,9 @@ exports.seed = async function(knex) {
   await knex('reunioes').del();
   await knex('proprietarios').del();
   await knex('condominios').del();
+
+  // Zera os contadores de autoincremento do SQLite
+  await knex.raw('DELETE FROM sqlite_sequence');
 
   // 1. Cadastra Condomínio
   const [condominioId] = await knex('condominios').insert({

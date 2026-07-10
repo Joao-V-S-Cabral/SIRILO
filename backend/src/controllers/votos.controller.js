@@ -3,30 +3,7 @@ const auditoriaService = require('../services/auditoria.service');
 const { encerrarSeExpirada } = require('../services/votacao-expiracao.service');
 
 class VotosController {
-  /**
-   * POST /api/votacoes/votar
-   * Requer autenticação (middleware `autenticar` + `apenasVotante`).
-   * Body: { votacao_id, opcao_escolhida }
-   *
-   * IMPORTANTE: proprietario_id e procurador_id NÃO vêm mais do corpo da
-   * requisição (isso permitiria que qualquer cliente votasse em nome de
-   * outra pessoa). Eles são extraídos de `req.usuario`, que é populado
-   * pelo middleware de autenticação a partir do JWT emitido no login —
-   * ou seja, refletem exatamente quem de fato autenticou na sessão.
-   *
-   * Implementa as regras de negócio centrais do sistema:
-   *  1. A votação precisa estar com status "Aberta".
-   *  2. A opção escolhida precisa constar na lista fechada de opções da votação.
-   *  3. Se o login ativo for de um procurador (RF12), valida que ele de fato
-   *     representa o proprietario_id da sessão e está credenciado na mesma reunião.
-   *  4. Um proprietário (ou seu procurador) só pode votar uma vez por votação (RF18),
-   *     garantido tanto na aplicação quanto pela constraint UNIQUE do banco.
-   *  5. Verificação de adimplência (RF19): proprietário inadimplente vota com peso 0.0.
-   *  6. Cálculo ponderado (RF19): caso contrário, aplica o peso_voto cadastrado
-   *     (Terreno = 1.0, Casa construída = 2.0, já refletido em peso_voto).
-   *  7. Captura IP e User-Agent para auditoria (RF4) e para a própria linha do voto.
-   *  8. O voto, uma vez salvo, é definitivo e irreversível (RF18) — não há rota de edição/remoção.
-   */
+  
   async votar(req, res) {
     const { votacao_id, opcao_escolhida } = req.body;
     const { proprietario_id, procurador_id } = req.usuario; // dados confiáveis do JWT
