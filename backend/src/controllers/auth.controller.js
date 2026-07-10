@@ -3,17 +3,7 @@ const auditoriaService = require('../services/auditoria.service');
 const { emitirToken } = require('../services/jwt.service');
 
 class AuthController {
-  /**
-   * POST /api/auth/login
-   *
-   * Suporta dois fluxos de autenticação, diferenciados pelo corpo da requisição:
-   *  - Admin / Proprietário: { email, senha }
-   *  - Procurador:           { email, token_reuniao }
-   *
-   * Regra de negócio: cada procurador possui um token_reuniao ÚNICO por
-   * representação. Caso represente mais de um proprietário, ele terá
-   * registros e tokens distintos, exigindo login individual para cada um.
-   */
+  
   async login(req, res) {
     const { email, senha, token_reuniao } = req.body;
 

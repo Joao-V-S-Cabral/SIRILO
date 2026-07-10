@@ -1,16 +1,17 @@
 const connection = require('../database/connection');
 const auditoriaService = require('../services/auditoria.service');
+const { encerrarSeExpirada } = require('../services/votacao-expiracao.service');
 
 const STATUS_VALIDOS = ['Agendada', 'Em_Andamento', 'Encerrada'];
 
 class ReunioesController {
-  /** GET /api/reunioes - lista reuniões com suas pautas */
+  
   async listar(req, res) {
     try {
       const reunioes = await connection('reunioes').select('*').orderBy('data', 'desc');
-      const pautas = await connection('pautas').select(
-        'id', 'reuniao_id', 'titulo', 'descricao'
-      );
+      const pautas = await connection('pautas')
+        .select('id', 'reuniao_id', 'titulo', 'descricao')
+        .select(connection.raw('(anexo_pdf IS NOT NULL) as tem_anexo'));
 
       const resultado = reunioes.map(reuniao => ({
         ...reuniao,
@@ -23,7 +24,7 @@ class ReunioesController {
     }
   }
 
-  /** GET /api/reunioes/:id - detalhe de uma reunião com pautas e votações */
+  
   async detalhar(req, res) {
     const { id } = req.params;
 
@@ -35,9 +36,14 @@ class ReunioesController {
 
       const pautas = await connection('pautas')
         .where({ reuniao_id: id })
-        .select('id', 'reuniao_id', 'titulo', 'descricao');
+        .select('id', 'reuniao_id', 'titulo', 'descricao')
+        .select(connection.raw('(anexo_pdf IS NOT NULL) as tem_anexo'));
 
-      const votacoes = await connection('votacoes').where({ reuniao_id: id });
+      const votacoesBrutas = await connection('votacoes').where({ reuniao_id: id });
+      // Dispara a mesma verificação de tempo esgotado (RF15/RF21) usada nos
+      // demais endpoints de votação, para o admin não ver uma votação como
+      // "Aberta" indefinidamente só porque ninguém consultou /ativa ainda.
+      const votacoes = await Promise.all(votacoesBrutas.map(v => encerrarSeExpirada(req, v)));
 
       const pautasComVotacoes = pautas.map(pauta => ({
         ...pauta,
@@ -50,10 +56,7 @@ class ReunioesController {
     }
   }
 
-  /**
-   * PATCH /api/reunioes/:id/status  (RF9)
-   * Body: { status: 'Agendada' | 'Em_Andamento' | 'Encerrada' }
-   */
+  
   async atualizarStatus(req, res) {
     const { id } = req.params;
     const { status } = req.body;
@@ -77,6 +80,16 @@ class ReunioesController {
 
       await connection('reunioes').where({ id }).update({ status });
 
+      // Regra de negócio: encerrar a reunião encerra também qualquer votação
+      // ainda aberta ou aguardando, para que nada fique "pendente de ação"
+      // numa reunião que já terminou.
+      if (status === 'Encerrada') {
+        await connection('votacoes')
+          .where({ reuniao_id: id })
+          .whereNot({ status: 'Encerrada' })
+          .update({ status: 'Encerrada' });
+      }
+
       await auditoriaService.registrar(req, {
         acao: `Reunião ${id} alterada para status "${status}"`
       });
@@ -87,10 +100,7 @@ class ReunioesController {
     }
   }
 
-  /**
-   * POST /api/pautas (Admin) — cria uma nova pauta dentro de uma reunião existente.
-   * Body: { reuniao_id, titulo, descricao }
-   */
+  
   async criarPauta(req, res) {
     const { reuniao_id, titulo, descricao } = req.body;
 
@@ -118,6 +128,7 @@ class ReunioesController {
       const pautaCriada = await connection('pautas')
         .where({ id: pautaId })
         .select('id', 'reuniao_id', 'titulo', 'descricao')
+        .select(connection.raw('(anexo_pdf IS NOT NULL) as tem_anexo'))
         .first();
 
       return res.status(201).json(pautaCriada);
@@ -126,7 +137,7 @@ class ReunioesController {
     }
   }
 
-  /** GET /api/pautas/:id/anexo - baixa o PDF anexado à pauta (RF30) */
+  
   async baixarAnexo(req, res) {
     const { id } = req.params;
 
@@ -149,12 +160,7 @@ class ReunioesController {
     }
   }
 
-  /**
-   * POST /api/pautas/:id/anexo (Admin) — faz upload do PDF anexado à pauta (RF30).
-   * Espera multipart/form-data com o campo de arquivo chamado "arquivo".
-   * Validações: precisa ser PDF de fato (por assinatura de bytes, não só extensão)
-   * e respeitar o limite de tamanho configurado no multer (ver rota).
-   */
+  
   async uploadAnexo(req, res) {
     const { id } = req.params;
 
@@ -174,6 +180,11 @@ class ReunioesController {
         return res.status(404).json({ error: 'Pauta não encontrada.' });
       }
 
+      const reuniao = await connection('reunioes').where({ id: pauta.reuniao_id }).first();
+      if (reuniao && reuniao.status === 'Encerrada') {
+        return res.status(400).json({ error: 'Não é possível enviar anexos em uma reunião encerrada.' });
+      }
+
       await connection('pautas').where({ id }).update({ anexo_pdf: req.file.buffer });
 
       await auditoriaService.registrar(req, {
@@ -183,6 +194,37 @@ class ReunioesController {
       return res.json({ status: 'success', message: 'Anexo enviado com sucesso.' });
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao enviar anexo da pauta.', details: error.message });
+    }
+  }
+
+  
+  async removerAnexo(req, res) {
+    const { id } = req.params;
+
+    try {
+      const pauta = await connection('pautas').where({ id }).first();
+      if (!pauta) {
+        return res.status(404).json({ error: 'Pauta não encontrada.' });
+      }
+
+      if (!pauta.anexo_pdf) {
+        return res.status(404).json({ error: 'Esta pauta não possui anexo.' });
+      }
+
+      const reuniao = await connection('reunioes').where({ id: pauta.reuniao_id }).first();
+      if (reuniao && reuniao.status === 'Encerrada') {
+        return res.status(400).json({ error: 'Não é possível remover anexos de uma reunião encerrada.' });
+      }
+
+      await connection('pautas').where({ id }).update({ anexo_pdf: null });
+
+      await auditoriaService.registrar(req, {
+        acao: `Anexo PDF removido da pauta ${id} ("${pauta.titulo}")`
+      });
+
+      return res.json({ status: 'success', message: 'Anexo removido com sucesso.' });
+    } catch (error) {
+      return res.status(500).json({ error: 'Erro ao remover anexo da pauta.', details: error.message });
     }
   }
 }

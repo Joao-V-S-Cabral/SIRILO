@@ -1,7 +1,4 @@
-/**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> }
- */
+
 exports.up = function(knex) {
   return knex.schema
     // 1. Condomínios
@@ -145,10 +142,7 @@ exports.up = function(knex) {
     });
 };
 
-/**
- * @param { import("knex").Knex } knex
- * @returns { Promise<void> }
- */
+
 exports.down = function(knex) {
   return knex.schema
     .dropTableIfExists('logs_auditoria')

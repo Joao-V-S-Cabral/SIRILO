@@ -1,7 +1,7 @@
 const connection = require('../database/connection');
 
 class AuditoriaController {
-  /** GET /api/auditoria - retorna os logs de auditoria para visualização do administrador */
+  
   async listar(req, res) {
     try {
       const logs = await connection('logs_auditoria')

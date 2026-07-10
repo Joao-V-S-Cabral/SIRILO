@@ -56,4 +56,35 @@ describe('Anexo de pauta (upload/download PDF)', () => {
 
     expect(res.status).toBe(403);
   });
+
+  test('bloqueia Proprietário de remover anexo (rota exclusiva do Admin)', async () => {
+    const proprietarioToken = await loginProprietarioA();
+    const res = await request(app)
+      .delete(`/api/pautas/${pautaId}/anexo`)
+      .set('Authorization', `Bearer ${proprietarioToken}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  test('remove o anexo e, depois disso, o download passa a retornar 404', async () => {
+    const removeRes = await request(app)
+      .delete(`/api/pautas/${pautaId}/anexo`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(removeRes.status).toBe(200);
+
+    const downloadRes = await request(app)
+      .get(`/api/pautas/${pautaId}/anexo`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(downloadRes.status).toBe(404);
+  });
+
+  test('retorna 404 ao tentar remover anexo de pauta que não possui um', async () => {
+    const res = await request(app)
+      .delete(`/api/pautas/${pautaId}/anexo`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(404);
+  });
 });

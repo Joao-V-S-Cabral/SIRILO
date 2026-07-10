@@ -19,6 +19,7 @@ routes.get('/pautas/:id/anexo', autenticar, reunioesController.baixarAnexo);
 // Escrita: restrito ao Administrador
 routes.post('/pautas', autenticar, apenasAdmin, reunioesController.criarPauta);
 routes.post('/pautas/:id/anexo', autenticar, apenasAdmin, upload.single('arquivo'), reunioesController.uploadAnexo);
+routes.delete('/pautas/:id/anexo', autenticar, apenasAdmin, reunioesController.removerAnexo);
 routes.patch('/reunioes/:id/status', autenticar, apenasAdmin, reunioesController.atualizarStatus);
 
 module.exports = routes;
